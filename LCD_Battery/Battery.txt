@@ -1,0 +1,159 @@
+// PIC16F877A Configuration Bit Settings
+
+// CONFIG
+#pragma config FOSC = EXTRC     // Oscillator Selection bits (RC oscillator)
+#pragma config WDTE = OFF       // Watchdog Timer Enable bit (WDT disabled)
+#pragma config PWRTE = OFF      // Power-up Timer Enable bit (PWRT disabled)
+#pragma config BOREN = OFF      // Brown-out Reset Enable bit (BOR disabled)
+#pragma config LVP = OFF        // Low-Voltage Programming (disabled)
+#pragma config CPD = OFF        // Data EEPROM Code Protection bit
+#pragma config WRT = OFF        // Flash Program Memory Write Enable bits
+#pragma config CP = OFF         // Flash Program Memory Code Protection bit
+
+#include <xc.h>
+#define _XTAL_FREQ 6000000
+
+void START_CONFIGURATION();
+void LCD_COMMAND_TO_THE_CONTROLLER(unsigned char);
+void LCD_DATA_TO_THE_CONTROLLER(unsigned char);
+void LCD_OUTPUT(float);
+void keyscane();
+
+unsigned char array[15] = {"BATTERY=     "};
+unsigned char lb[20] = {"VOLTAGE LOW   "};
+unsigned char nb[20] = {"VOLTAGE NORMAL"};
+unsigned char hb[20] = {"VOLTAGE HIGH  "};
+
+unsigned char x, value;
+float j = 15.5;
+
+void main(void) {
+    START_CONFIGURATION();
+    while (1) {
+        keyscane();
+    }
+}
+
+void START_CONFIGURATION() {
+    TRISC = 0x00;  // PORTC as output
+    TRISD = 0x00;  // PORTD as output
+    TRISB = 0xF0;  // RB4-RB7 as input
+    PORTB = 0x00;
+    OPTION_REG &= 0x7F; 
+
+    LCD_COMMAND_TO_THE_CONTROLLER(0x30);
+    __delay_ms(100);
+    LCD_COMMAND_TO_THE_CONTROLLER(0x30);
+    __delay_ms(100);
+    LCD_COMMAND_TO_THE_CONTROLLER(0x38); 
+    __delay_ms(100);
+    LCD_COMMAND_TO_THE_CONTROLLER(0x06); 
+    __delay_ms(100);
+    LCD_COMMAND_TO_THE_CONTROLLER(0x0C); 
+    __delay_ms(100);
+    LCD_COMMAND_TO_THE_CONTROLLER(0x01); 
+    __delay_ms(100);
+}
+
+void keyscane() {
+    PORTB &= 0xF0;
+    value = PORTB;
+
+    switch (value) {
+        case 0xE0: // Show Battery
+            LCD_COMMAND_TO_THE_CONTROLLER(0x80); // First line
+            for (x = 0; x < 15; x++) {
+                LCD_DATA_TO_THE_CONTROLLER(array[x]);
+            }
+            LCD_OUTPUT(j);
+            break;
+
+        case 0xD0: // Increment
+            j += 0.1;
+            if (j > 22.5) j = 22.5;
+            LCD_OUTPUT(j);
+            if (j < 17.5) {
+                PORTB |= 0x02; // LOW
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(lb[x]);
+            } else if (j > 20.5) {
+                PORTB |= 0x08; // HIGH
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(hb[x]);
+            } else {
+                PORTB |= 0x04; // NORMAL
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(nb[x]);
+            }
+            break;
+
+        case 0xB0: // Decrement
+            j -= 0.1;
+            if (j < 15.5) j = 15.5;
+            LCD_OUTPUT(j);
+            if (j < 17.5) {
+                PORTB |= 0x02;
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(lb[x]);
+            } else if (j > 20.5) {
+                PORTB |= 0x08;
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(hb[x]);
+            } else {
+                PORTB |= 0x04;
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(nb[x]);
+            }
+            break;
+
+        case 0x70: // Reset
+            j = 15.5;
+            LCD_OUTPUT(j);
+            if (j < 17.5) {
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(lb[x]);
+            } else if (j > 20.5) {
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(hb[x]);
+            } else {
+                LCD_COMMAND_TO_THE_CONTROLLER(0xC0);
+                for (x = 0; x < 14; x++) LCD_DATA_TO_THE_CONTROLLER(nb[x]);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+void LCD_COMMAND_TO_THE_CONTROLLER(unsigned char cmd) {
+    PORTC &= ~(0x08); // RS = 0
+    PORTD = cmd;
+    PORTC |= 0x01;    // EN = 1
+    __delay_ms(1);
+    PORTC &= ~(0x01); // EN = 0
+    __delay_ms(100);
+}
+
+void LCD_DATA_TO_THE_CONTROLLER(unsigned char data) {
+    PORTC |= 0x08;    // RS = 1
+    PORTD = data;
+    PORTC |= 0x01;    // EN = 1
+    __delay_ms(1);
+    PORTC &= ~(0x01); // EN = 0
+    __delay_ms(100);
+}
+
+void LCD_OUTPUT(float value) {
+    int int_part = (int)value;
+    int decimal_part = (int)((value - int_part) * 10);
+
+    unsigned char d2 = int_part / 10;
+    unsigned char d1 = int_part % 10;
+
+    LCD_COMMAND_TO_THE_CONTROLLER(0x88); 
+    LCD_DATA_TO_THE_CONTROLLER(0x30 + d2); 
+    LCD_DATA_TO_THE_CONTROLLER(0x30 + d1); 
+    LCD_DATA_TO_THE_CONTROLLER('.');      
+    LCD_DATA_TO_THE_CONTROLLER(0x30 + decimal_part); 
+}
